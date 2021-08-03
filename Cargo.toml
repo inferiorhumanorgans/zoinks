@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    # "zoinks-codegen",
+    "zoinks-lib",
+    "zoinks-support",
+    "print-bindings",
+]

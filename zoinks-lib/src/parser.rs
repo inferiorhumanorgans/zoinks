@@ -1,46 +1,51 @@
+use std::borrow::Cow;
+
 use serde_json::Value as JsonValue;
 use serde::Deserialize;
 use indexmap::IndexMap;
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
-pub enum AdditionalProperties {
+pub enum AdditionalProperties<'a> {
     Boolean(bool),
-    Schema(Box<Schema>),
+    #[serde(borrow)]
+    Schema(Box<Schema<'a>>),
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all="camelCase")]
 #[serde(deny_unknown_fields)]
-pub struct Schema {
+pub struct Schema<'a> {
     #[serde(rename="$ref")]
-    pub reference: Option<String>,
+    pub reference: Option<Cow<'a, str>>,
 
     #[serde(rename="$schema")]
-    pub schema_uri: Option<String>,
+    pub schema_uri: Option<Cow<'a, str>>,
 
-    pub description: Option<String>,
+    // https://github.com/serde-rs/serde/issues/1413
+    pub description: Option<Cow<'a, str>>,
 
     // alias: $defs
     #[serde(default)]
-    pub definitions: IndexMap<String, Schema>,
+    pub definitions: IndexMap<String, Schema<'a>>,
 
-    pub additional_properties: Option<AdditionalProperties>,
-
-    #[serde(default)]
-    pub properties: IndexMap<String, Schema>,
+    #[serde(borrow)]
+    pub additional_properties: Option<AdditionalProperties<'a>>,
 
     #[serde(default)]
-    pub all_of: Vec<Schema>,
+    pub properties: IndexMap<Cow<'a, str>, Schema<'a>>,
 
     #[serde(default)]
-    pub any_of: Vec<Schema>,
+    pub all_of: Vec<Schema<'a>>,
 
     #[serde(default)]
-    pub one_of: Vec<Schema>,
+    pub any_of: Vec<Schema<'a>>,
 
     #[serde(default)]
-    pub items: Option<Box<Schema>>,
+    pub one_of: Vec<Schema<'a>>,
+
+    #[serde(default)]
+    pub items: Option<Box<Schema<'a>>>,
 
     #[serde(default)]
     #[serde(rename="enum")]
@@ -82,7 +87,7 @@ pub struct Schema {
 
     // https://json-schema.org/draft/2020-12/json-schema-validation.html §6.3.3
     // Validate that it's a regex
-    pub pattern: Option<String>,
+    pub pattern: Option<Cow<'a, str>>,
 
     // 6.4. Validation Keywords for Arrays
     // https://json-schema.org/draft/2020-12/json-schema-validation.html §6.4.1
@@ -106,5 +111,5 @@ pub struct Schema {
     pub min_properties: Option<u32>,
 
     // https://json-schema.org/draft/2020-12/json-schema-validation.html §7
-    pub format: Option<String>,
+    pub format: Option<Cow<'a, str>>,
 }

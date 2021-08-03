@@ -1,18 +1,42 @@
-use proc_macro2::{TokenStream as TokenStream2};
-use heck::{CamelCase, SnakeCase};
-// use inflector::Inflector;
-// use syn::Ident;
-// use quote::{format_ident, quote};
-use serde_json::Value as JsonValue;
 use std::collections::HashSet;
-use super::Schema;
 use std::iter::FromIterator;
+
+use heck::{CamelCase, SnakeCase};
+use proc_macro2::TokenStream as TokenStream2;
+use quote::quote;
 use regex::Regex;
+use serde_json::Value as JsonValue;
 
 #[allow(unused)]
 use log::{info, error, warn, debug};
 
-type OutVec = Vec<String>;
+use super::Schema;
+
+mod tokens;
+use tokens::*;
+
+type OutVec = Vec<RustItem>;
+
+// TODO: Make this more general
+fn is_boxed(type_name: &str, field_name: &str) -> bool {
+    if type_name == "DerivedStream" && field_name == "stream" {
+        return true
+    }
+
+    if type_name == "LogicalNotQltPredicateQgt" && field_name == "not" {
+        return true
+    }
+
+    if type_name == "NonLayerRepeatSpec" && field_name == "spec" {
+        return true
+    }
+
+    if type_name == "TopLevelUnitSpec" && field_name == "config" {
+        return true
+    }
+
+    return false
+}
 
 fn sanitize(before: &str) -> String {
     let out = before
@@ -46,21 +70,25 @@ fn descend(in_name: String, schema: &Schema, out: &mut OutVec, root: bool) -> Op
 
     if schema.any_of.len() > 0 && instance_types.is_empty() {
         let mut outer = vec![];
-        outer.push(format!("/// any_of enum: {}", name));
-        outer.push(format!("#[derive(Debug, serde::Deserialize)]"));
-        outer.push(format!("#[serde(untagged)]"));
-        outer.push(format!("pub enum {} {{", name));
+        outer.push(RustItem::DocComment(format!("any_of enum: {}", name)));
+        outer.push(RustItem::DeriveCommon);
+        outer.push(RustItem::SerdeUntagged);
+
+        let mut variants = vec![];
 
         for (i, any) in schema.any_of.iter().enumerate() {
             match descend(format!("{}Variant{}", name, i), any, out, false) {
                 Some(variant) => {
                     let variant = sanitize(&variant);
-                    outer.push(format!("  {}({}),", variant, variant))
+                    variants.push(EnumVariant::Tuple(variant.clone(), variant.clone()));
                 },
                 None => error!("Invalid: {}{}", name, i)
             }
         }
-        outer.push(format!("}}"));
+        outer.push(RustItem::Enum(Enum {
+            name: name.clone(),
+            variants,
+        }));
         out.extend(outer);
         return Some(name)
     } else if schema.enums.len() > 0 {
@@ -68,7 +96,7 @@ fn descend(in_name: String, schema: &Schema, out: &mut OutVec, root: bool) -> Op
         let allow_number = instance_types.contains("number");
         let allow_null = instance_types.contains("null");
 
-        let enums = schema.enums
+        let variants = schema.enums
             .iter()
             .filter_map(|e| {
                 match e {
@@ -99,44 +127,56 @@ fn descend(in_name: String, schema: &Schema, out: &mut OutVec, root: bool) -> Op
                     _ => todo!("unsupported enum type: {:?}", e)
                 }
             })
-            .map(|(old_s, new_s)| {
-                if *old_s != new_s {
-                    format!(r#"#[serde(rename="{}")] {}"#, old_s, new_s)
-                } else {
-                    format!("{}", new_s)
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
+            .map(|(old_name, new_name)| EnumVariant::Unit(new_name, old_name))
+            .collect::<Vec<_>>();
 
-        // out.push(format!("#[allow(non_camel_case_types)]"));
-        out.push(format!("#[derive(Debug, serde::Deserialize)]"));
-        out.push(format!("pub enum {} {{ {} }}", name, enums));
+        out.push(RustItem::DeriveCommon);
+        out.push(RustItem::Enum(Enum {
+            name: name.clone(),
+            variants,
+        }));
 
         return Some(name)
     } else if instance_types.len() == 1 && instance_types.contains("object") {
         if schema.properties.is_empty() {
             error!("{} Empty object specified", name);
-            out.push(format!("#[derive(Debug, serde::Deserialize)]"));
-            out.push(format!("pub struct {} (serde_json::Value);", name));
+            out.push(RustItem::DeriveCommon);
+            out.push(RustItem::TupleStruct(name.clone(), "serde_json::Value".into()));
 
             return Some(name)
         } else {
             let mut outer = vec![];
-            outer.push(format!("#[derive(Debug, serde::Deserialize)]"));
-            outer.push(format!("pub struct {} {{", name));
+            outer.push(RustItem::DeriveCommon);
+
+            let mut fields = vec![];
 
             for (prop_name, prop_schema) in schema.properties.iter() {
                 let prop_type = descend(format!("{}_prpty_{}", name, prop_name).to_camel_case(), &prop_schema, out, false).unwrap();
 
                 let field_name = sanitize(prop_name).to_snake_case();
-                if *prop_name != field_name {
-                    outer.push(format!(r#"  #[serde(rename="{}")]"#, prop_name));
-                }
-                outer.push(format!("  pub {}: Option<{}>,", field_name, prop_type));
+
+                fields.push(StructField {
+                    old_name: prop_name.to_string(),
+                    field_type: prop_type,
+                    required: false,
+                    boxed: is_boxed(&name, &field_name),
+                    name: field_name,
+                });
             }
 
-            outer.push(format!("}}"));
+            let additional_fields = match schema.additional_properties.as_ref() {
+                None => true,
+                Some(additional_properties) => match additional_properties {
+                    crate::parser::AdditionalProperties::Boolean(b) if *b == false => false,
+                    _ => true
+                }
+            };
+
+            outer.push(RustItem::Struct(Struct {
+                name: name.clone(),
+                fields,
+                additional_fields,
+            }));
 
             out.extend(outer);
             return Some(name)
@@ -148,8 +188,9 @@ fn descend(in_name: String, schema: &Schema, out: &mut OutVec, root: bool) -> Op
             let reference = &reference[14..];
             let reference = sanitize(reference).to_camel_case();
             if root {
-                out.push(format!("#[derive(Debug, serde::Deserialize)]"));
-                out.push(format!("pub struct {}({});", name, reference))
+                out.push(RustItem::DeriveCommon);
+                out.push(RustItem::TupleStruct(name, reference.clone()));
+                // out.push(format!("pub struct {}({});", name, reference))
             }
 
             return Some(reference.into())
@@ -158,18 +199,18 @@ fn descend(in_name: String, schema: &Schema, out: &mut OutVec, root: bool) -> Op
             return None
         }
     } else if instance_types.len() == 1 && instance_types.contains("number") {
-        out.push(format!("#[derive(Debug, serde::Deserialize)]"));
-        out.push(format!("pub struct {}(f64);", name));
+        out.push(RustItem::DeriveCommon);
+        out.push(RustItem::TupleStruct(name.clone(), format!("f64")));
 
         return Some(name)
     } else if instance_types.len() == 1 && instance_types.contains("boolean") {
-        out.push(format!("#[derive(Debug, serde::Deserialize)]"));
-        out.push(format!("pub struct {}(bool);", name));
+        out.push(RustItem::DeriveCommon);
+        out.push(RustItem::TupleStruct(name.clone(), format!("bool")));
 
         return Some(name)
     } else if instance_types.len() == 1 && instance_types.contains("string") {
-        out.push(format!("#[derive(Debug, serde::Deserialize)]"));
-        out.push(format!("pub struct {}(String);", name));
+        out.push(RustItem::DeriveCommon);
+        out.push(RustItem::TupleStruct(name.clone(), format!("String")));
 
         return Some(name)
     } else if instance_types.len() == 1 && instance_types.contains("null") {
@@ -182,46 +223,46 @@ fn descend(in_name: String, schema: &Schema, out: &mut OutVec, root: bool) -> Op
         };
 
         // out.push(format!("#[derive(Debug, serde::Deserialize)]"));
-        out.push(format!("pub type {} = Vec<{}>;", name, sanitize(&inner_name)));
+        out.push(RustItem::TypeAlias(name.clone(), format!("Vec<{}>", sanitize(&inner_name))));
+        // out.push(format!("pub type {} = Vec<{}>;", name, sanitize(&inner_name)));
         return Some(name)
     } else if instance_types.len() > 1 {
-        let enums = instance_types.iter()
+        let variants = instance_types.iter()
             .map(|e| match e.as_ref() {
-                "number" => "Number(f64)",
-                "string" => "String(String)",
-                "boolean" => "Boolean(bool)",
-                "null" => "Null",
+                "number" => EnumVariant::Tuple(format!("Number"), format!("f64")),
+                "string" => EnumVariant::Tuple(format!("String"), format!("String")),
+                "boolean" => EnumVariant::Tuple(format!("Boolean"), format!("bool")),
+                "null" => EnumVariant::Unit(format!("Null"), format!("null")),
                 _ => unimplemented!(),
             })
-            .collect::<Vec<_>>()
-            .join(", ");
+            .collect::<Vec<_>>();
 
-        out.push(format!("#[derive(Debug, serde::Deserialize)]"));
-        out.push(format!("pub enum {} {{ {} }}", name, enums));
+        out.push(RustItem::DeriveCommon);
+        out.push(RustItem::Enum(Enum {
+            name: name.clone(), variants
+        }));
+        // out.push(format!("pub enum {} {{ {} }}", name, enums));
         return Some(name)
     } else {
         error!("Unsupported {}: {:?}", name, schema);
-        out.push(format!("#[derive(Debug, serde::Deserialize)]"));
-        out.push(format!("pub struct {};", name));
+        out.push(RustItem::DeriveCommon);
+        out.push(RustItem::UnitStruct(name.clone()));
 
         return Some(name)
     }
 }
 
 pub fn genimpl(schema: &Schema) -> TokenStream2 {
-    let mut out : OutVec = vec![];
+    let mut out : OutVec = vec![
+        RustItem::DeriveCommon,
+        RustItem::UnitStruct("Null".into()),
+    ];
 
     for (name, defn) in schema.definitions.iter() {
         descend(name.into(), &defn, &mut out, true);
     }
 
-    // println!("#![allow(non_camel_case_types)]");
-    println!("#[derive(Debug, serde::Deserialize)]");
-    println!("pub struct Null;");
-
-    for foo in out.iter() {
-        println!("{}", foo)
+    quote! {
+        #(#out)*
     }
-
-    todo!()
 }

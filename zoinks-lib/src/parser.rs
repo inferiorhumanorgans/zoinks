@@ -23,7 +23,11 @@ pub struct Schema<'a> {
     pub schema_uri: Option<Cow<'a, str>>,
 
     // https://github.com/serde-rs/serde/issues/1413
+    // https://json-schema.org/draft/2020-12/json-schema-validation.html §9.1
     pub description: Option<Cow<'a, str>>,
+
+    // https://json-schema.org/draft/2020-12/json-schema-validation.html §9.1
+    pub title: Option<Cow<'a, str>>,
 
     // alias: $defs
     #[serde(default)]

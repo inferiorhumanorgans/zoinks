@@ -1,7 +1,13 @@
 use std::fmt;
 
 use serde::{Deserialize, Deserializer};
-use serde::de::{self, Visitor, SeqAccess};
+use serde::de::{self, SeqAccess, Visitor};
+
+mod numeric_validator;
+pub use numeric_validator::NumericValidatorConfig;
+
+mod string_validator;
+pub use string_validator::StringValidatorConfig;
 
 // https://github.com/serde-rs/serde/issues/889
 pub fn string_or_vec<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>

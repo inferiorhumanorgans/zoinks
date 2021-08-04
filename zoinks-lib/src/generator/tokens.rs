@@ -1,6 +1,7 @@
 use proc_macro2::TokenStream as TokenStream;
-use quote::{ToTokens, TokenStreamExt, quote};
 use proc_macro2::{Ident, Span};
+use quote::{ToTokens, quote, format_ident};
+use zoinks_support::{StringValidatorConfig, NumericValidatorConfig};
 
 #[derive(Debug)]
 pub(super) enum EnumVariant {
@@ -43,6 +44,9 @@ pub(super) enum RustItem {
     // #[derive(Debug, serde::Deserialize)]
     DeriveCommon,
 
+    // #[derive(Debug)]
+    DeriveNoSerde,
+
     // #[serde(untagged)]
     SerdeUntagged,
 
@@ -60,6 +64,9 @@ pub(super) enum RustItem {
     UnitStruct(String),
 
     Struct(Struct),
+
+    StringValidator(String, StringValidatorConfig),
+    NumericValidator(String, NumericValidatorConfig),
 }
 
 impl std::fmt::Display for StructField {
@@ -131,12 +138,15 @@ impl std::fmt::Display for RustItem {
         match self {
             Self::DocComment(text) => writeln!(f, "/// {}", text),
             Self::DeriveCommon => write!(f, "#[derive(Debug, serde::Deserialize)]"),
+            Self::DeriveNoSerde => write!(f, "#[derive(Debug)]"),
             Self::SerdeUntagged => write!(f, "#[serde(untagged)]"),
             Self::TypeAlias(type_alias, type_source) => write!(f, "pub type {} = {};", type_alias, type_source),
             Self::Enum(enum_decl) => write!(f, "{}", enum_decl),
             Self::TupleStruct(struct_name, struct_type) => write!(f, "pub struct {} ({});", struct_name, struct_type),
             Self::UnitStruct(struct_name) => write!(f, "pub struct {};", struct_name),
             Self::Struct(struct_decl) => write!(f, "{}", struct_decl),
+            Self::StringValidator(field_name, config) => write!(f, "String {} {:?}", field_name, config),
+            Self::NumericValidator(field_name, config) => write!(f, "Numeric {} {:?}", field_name, config),
         }
     }
 }
@@ -150,6 +160,10 @@ impl ToTokens for RustItem {
             },
             Self::DeriveCommon => {
                 let derive = quote!{ #[derive(Debug, serde::Deserialize)] };
+                out.extend(derive);
+            },
+            Self::DeriveNoSerde => {
+                let derive = quote!{ #[derive(Debug)] };
                 out.extend(derive);
             },
             Self::SerdeUntagged => {
@@ -286,6 +300,40 @@ impl ToTokens for RustItem {
                 };
 
                 out.extend(the_struct);
+            },
+            Self::NumericValidator(name, config) => {
+                let name = format_ident!("{}", name);
+                let validator = quote!{
+                    impl<'de> serde::Deserialize<'de> for #name {
+                        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                        where
+                            D: serde::Deserializer<'de>
+                        {
+                            let config = #config;
+
+                            deserializer.deserialize_any(config).map(|n| Self(n))
+                        }
+                    }
+                };
+
+                out.extend(validator);
+            },
+            Self::StringValidator(name, config) => {
+                let name = format_ident!("{}", name);
+                let validator = quote!{
+                    impl<'de> serde::Deserialize<'de> for #name {
+                        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                        where
+                            D: serde::Deserializer<'de>
+                        {
+                            let config = #config;
+
+                            deserializer.deserialize_any(config).map(|n| Self(n))
+                        }
+                    }
+                };
+
+                out.extend(validator);
             },
         }
     }

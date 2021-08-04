@@ -78,10 +78,11 @@ fn descend(in_name: Cow<str>, schema: &Schema, out: &mut OutVec, root: bool) -> 
         let mut variants = Vec::with_capacity(schema.any_of.len());
 
         for (i, any) in schema.any_of.iter().enumerate() {
-            match descend(format!("{}Variant{}", name, i), any, out, false) {
+            let child_name = format!("{}_{}_{}", name, any.instance_type.join("_"), i);
+            match descend(Cow::Owned(child_name), any, out, false) {
                 Some(variant) => {
                     let variant = sanitize(&variant);
-                    variants.push(EnumVariant::Tuple(variant.clone(), variant.clone()));
+                    variants.push(EnumVariant::Tuple(variant.clone(), variant));
                 },
                 None => error!("Invalid: {}{}", name, i)
             }
@@ -215,7 +216,17 @@ fn descend(in_name: Cow<str>, schema: &Schema, out: &mut OutVec, root: bool) -> 
         }
     } else if instance_types.len() == 1 {
         if instance_types.contains("number") {
-            out.push(RustItem::DeriveCommon);
+            if schema.minimum.is_some() || schema.exclusive_minimum.is_some() || schema.maximum.is_some() || schema.exclusive_maximum.is_some() {
+                out.push(RustItem::NumericValidator(name.clone(), zoinks_support::NumericValidatorConfig {
+                    min: schema.minimum,
+                    exclusive_min: schema.exclusive_minimum,
+                    max: schema.maximum,
+                    exclusive_max: schema.exclusive_maximum,
+                }));
+                out.push(RustItem::DeriveNoSerde);
+            } else {
+                out.push(RustItem::DeriveCommon);
+            }
             out.push(RustItem::TupleStruct(name.clone(), String::from("f64")));
 
             return Some(name)
@@ -225,7 +236,15 @@ fn descend(in_name: Cow<str>, schema: &Schema, out: &mut OutVec, root: bool) -> 
 
             return Some(name)
         } else if instance_types.contains("string") {
-            out.push(RustItem::DeriveCommon);
+            if schema.min_length.is_some() || schema.max_length.is_some() {
+                out.push(RustItem::StringValidator(name.clone(), zoinks_support::StringValidatorConfig {
+                    min_length: schema.min_length,
+                    max_length: schema.max_length,
+                }));
+                out.push(RustItem::DeriveNoSerde);
+            } else {
+                out.push(RustItem::DeriveCommon);
+            }
             out.push(RustItem::TupleStruct(name.clone(), String::from("String")));
 
             return Some(name)

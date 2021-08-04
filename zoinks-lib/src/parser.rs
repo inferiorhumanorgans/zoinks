@@ -33,7 +33,7 @@ pub struct Schema<'a> {
     // https://json-schema.org/draft/2020-12/json-schema-validation.html §9.1
     pub title: Option<Cow<'a, str>>,
 
-    // alias: $defs
+    #[serde(alias = "$defs")]
     #[serde(default)]
     pub definitions: IndexMap<String, Schema<'a>>,
 
@@ -70,31 +70,45 @@ pub struct Schema<'a> {
 
     // 6.2. Validation Keywords for Numeric Instances (number and integer)
     // https://json-schema.org/draft/2020-12/json-schema-validation.html §6.2.1
+    /// The value of "multipleOf" MUST be a number, strictly greater than 0.
+    /// A numeric instance is valid only if division by this keyword's value results in an integer.
     pub multiple_of: Option<f64>,
 
     // https://json-schema.org/draft/2020-12/json-schema-validation.html §6.2.2
+    /// The value of "maximum" MUST be a number, representing an inclusive upper limit for a numeric instance.
+    /// If the instance is a number, then this keyword validates only if the instance is less than or exactly equal to "maximum".
     pub maximum: Option<f64>,
 
     // https://json-schema.org/draft/2020-12/json-schema-validation.html §6.2.3
     pub exclusive_maximum: Option<f64>,
 
     // https://json-schema.org/draft/2020-12/json-schema-validation.html §6.2.4
+    /// The value of "minimum" MUST be a number, representing an inclusive lower limit for a numeric instance.
+    /// If the instance is a number, then this keyword validates only if the instance is greater than or exactly equal to "minimum".
     pub minimum: Option<f64>,
 
     // https://json-schema.org/draft/2020-12/json-schema-validation.html §6.2.5
+    /// The value of "exclusiveMinimum" MUST be a number, representing an exclusive lower limit for a numeric instance.
+    /// If the instance is a number, then the instance is valid only if it has a value strictly greater than (not equal to) "exclusiveMinimum".
     pub exclusive_minimum: Option<f64>,
 
     // 6.3. Validation Keywords for Strings
     // https://json-schema.org/draft/2020-12/json-schema-validation.html §6.3.1
-    // Must be non-negative
+    /// The value of this keyword MUST be a non-negative integer.
+    /// A string instance is valid against this keyword if its length is less than, or equal to, the value of this keyword.
     pub max_length: Option<u32>,
 
     // https://json-schema.org/draft/2020-12/json-schema-validation.html §6.3.2
     // Must be non-negative
+    /// The value of this keyword MUST be a non-negative integer.
+    /// A string instance is valid against this keyword if its length is greater than, or equal to, the value of this keyword.
+    /// Omitting this keyword has the same behavior as a value of 0.
     pub min_length: Option<u32>,
 
     // https://json-schema.org/draft/2020-12/json-schema-validation.html §6.3.3
-    // Validate that it's a regex
+    // TODO: Validate that it's a regex
+    /// The value of this keyword MUST be a string. This string SHOULD be a valid regular expression, according to the ECMA-262 regular expression dialect.
+    /// A string instance is considered valid if the regular expression matches the instance successfully. Recall: regular expressions are not implicitly anchored.
     pub pattern: Option<Cow<'a, str>>,
 
     // 6.4. Validation Keywords for Arrays

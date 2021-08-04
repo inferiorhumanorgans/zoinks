@@ -22,3 +22,6 @@ pub fn schema2print(input_fn: &str) -> String {
 
     format!("{:#}", imp)
 }
+
+#[cfg(test)]
+mod test;

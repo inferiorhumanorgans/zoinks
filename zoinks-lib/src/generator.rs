@@ -162,6 +162,7 @@ fn descend(in_name: Cow<str>, schema: &Schema, out: &mut OutVec, root: bool) -> 
                     required: false,
                     boxed: is_boxed(&name, &field_name, prop_count),
                     name: field_name,
+                    description: prop_schema.description.as_ref().map(|x| x.to_string()),
                 });
             }
 

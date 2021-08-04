@@ -16,6 +16,10 @@ pub enum AdditionalProperties<'a> {
 #[serde(rename_all="camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct Schema<'a> {
+    // https://json-schema.org/draft/2020-12/json-schema-core.html#rfc.section.8.2.1 §8.2.1
+    #[serde(rename="$id")]
+    pub id: Option<Cow<'a, str>>,
+
     #[serde(rename="$ref")]
     pub reference: Option<Cow<'a, str>>,
 
@@ -114,6 +118,20 @@ pub struct Schema<'a> {
     // https://json-schema.org/draft/2020-12/json-schema-validation.html §6.5.2
     pub min_properties: Option<u32>,
 
+    // https://json-schema.org/draft/2020-12/json-schema-validation.html §6.5.4
+    #[serde(default)]
+    pub dependent_required: IndexMap<String, Vec<String>>,
+
     // https://json-schema.org/draft/2020-12/json-schema-validation.html §7
     pub format: Option<Cow<'a, str>>,
+
+    // https://json-schema.org/draft/2020-12/json-schema-validation.html §9.2
+    pub default: Option<JsonValue>,
+
+    // https://json-schema.org/draft/2020-12/json-schema-core.html §10.2.1.4
+    pub not: Option<Box<Schema<'a>>>,
+
+    // https://json-schema.org/draft/2020-12/json-schema-core.html §10.3.2.2
+    #[serde(default)]
+    pub pattern_properties: IndexMap<String, Schema<'a>>,
 }

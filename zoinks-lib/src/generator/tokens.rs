@@ -26,6 +26,7 @@ pub(super) struct StructField {
     pub field_type: String,
     pub required: bool,
     pub boxed: bool,
+    pub description: Option<String>,
 }
 
 #[derive(Debug)]
@@ -258,9 +259,15 @@ impl ToTokens for RustItem {
                             },
                         };
 
+                        let description = match field.description.as_ref() {
+                            Some(description) => quote!{#[doc=#description]},
+                            None => quote!{},
+                        };
+
                         quote!{
                             #rename
                             #serde_default
+                            #description
                             pub #name: #field_type
                         }
                     })

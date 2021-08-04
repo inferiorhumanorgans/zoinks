@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::iter::FromIterator;
 
@@ -52,18 +53,16 @@ fn sanitize(before: &str) -> String {
         .replace("$", "_Reserved_")
         ;
     let re = Regex::new(r#"[\[\]"\-]"#).unwrap();
-    // "ValueDef<(number|\"width\"|\"height\"|ExprRef)>": {
-    let out = re.replace_all(&out, "_").to_string();
-    match out.as_ref() {
-        "as" => "reserved_as".into(),
-        "type" => "reserved_type".into(),
-        "box" => "reserved_box".into(),
-        "URI" => "UniformResoruceIdiot".into(),
+    match re.replace_all(&out, "_") {
+        Cow::Borrowed("as") => "reserved_as".into(),
+        Cow::Borrowed("type") => "reserved_type".into(),
+        Cow::Borrowed("box") => "reserved_box".into(),
+        Cow::Borrowed("URI") => "UniformResourceIdiot".into(),
         s @ _ => s.into(),
     }
 }
 
-fn descend(in_name: String, schema: &Schema, out: &mut OutVec, root: bool) -> Option<String> {
+fn descend(in_name: Cow<str>, schema: &Schema, out: &mut OutVec, root: bool) -> Option<String> {
     let name = sanitize(&in_name).to_camel_case();
 
     let instance_types : HashSet<String> = HashSet::from_iter(schema.instance_type.iter().cloned());
@@ -120,7 +119,7 @@ fn descend(in_name: String, schema: &Schema, out: &mut OutVec, root: bool) -> Op
                     },
                     JsonValue::Null => {
                         if allow_null {
-                            Some((format!("null"), format!("Null")))
+                            Some((String::from("null"), String::from("Null")))
                         } else {
                             warn!("Got a null enum value, but null values not allowed");
                             None
@@ -153,7 +152,7 @@ fn descend(in_name: String, schema: &Schema, out: &mut OutVec, root: bool) -> Op
             let mut fields = Vec::with_capacity(prop_count);
 
             for (prop_name, prop_schema) in schema.properties.iter() {
-                let prop_type = descend(format!("{}_prpty_{}", name, prop_name).to_camel_case(), &prop_schema, out, false).unwrap();
+                let prop_type = descend(Cow::Owned(format!("{}_prpty_{}", name, prop_name).to_camel_case()), &prop_schema, out, false).unwrap();
 
                 let field_name = sanitize(prop_name).to_snake_case();
 
@@ -161,7 +160,7 @@ fn descend(in_name: String, schema: &Schema, out: &mut OutVec, root: bool) -> Op
                     old_name: prop_name.to_string(),
                     field_type: prop_type,
                     required: false,
-                    boxed: is_boxed(&name, &field_name),
+                    boxed: is_boxed(&name, &field_name, prop_count),
                     name: field_name,
                 });
             }
@@ -208,46 +207,49 @@ fn descend(in_name: String, schema: &Schema, out: &mut OutVec, root: bool) -> Op
                 // out.push(format!("pub struct {}({});", name, reference))
             }
 
-            return Some(reference.into())
+            return Some(reference)
         } else {
             error!("Unsupported reference: {}", reference);
             return None
         }
-    } else if instance_types.len() == 1 && instance_types.contains("number") {
-        out.push(RustItem::DeriveCommon);
-        out.push(RustItem::TupleStruct(name.clone(), format!("f64")));
+    } else if instance_types.len() == 1 {
+        if instance_types.contains("number") {
+            out.push(RustItem::DeriveCommon);
+            out.push(RustItem::TupleStruct(name.clone(), String::from("f64")));
 
-        return Some(name)
-    } else if instance_types.len() == 1 && instance_types.contains("boolean") {
-        out.push(RustItem::DeriveCommon);
-        out.push(RustItem::TupleStruct(name.clone(), format!("bool")));
+            return Some(name)
+        } else if instance_types.contains("boolean") {
+            out.push(RustItem::DeriveCommon);
+            out.push(RustItem::TupleStruct(name.clone(), String::from("bool")));
 
-        return Some(name)
-    } else if instance_types.len() == 1 && instance_types.contains("string") {
-        out.push(RustItem::DeriveCommon);
-        out.push(RustItem::TupleStruct(name.clone(), format!("String")));
+            return Some(name)
+        } else if instance_types.contains("string") {
+            out.push(RustItem::DeriveCommon);
+            out.push(RustItem::TupleStruct(name.clone(), String::from("String")));
 
-        return Some(name)
-    } else if instance_types.len() == 1 && instance_types.contains("null") {
-        return Some("Null".into())
-    } else if instance_types.len() == 1 && instance_types.contains("array") {
-        let inner_name = format!("VecOf{}", name.to_camel_case());
-        let inner_name = match descend(inner_name.clone(), schema.items.as_ref().unwrap(), out, false) {
-            Some(name) => name,
-            None => inner_name,
-        };
+            return Some(name)
+        } else if instance_types.contains("null") {
+            return Some(String::from("Null"))
+        } else if instance_types.contains("array") {
+            let inner_name = format!("{}Item", name.to_camel_case());
+            let inner_name = match descend(Cow::Borrowed(&inner_name), schema.items.as_ref().unwrap(), out, false) {
+                Some(name) => name,
+                None => inner_name,
+            };
 
-        // out.push(format!("#[derive(Debug, serde::Deserialize)]"));
-        out.push(RustItem::TypeAlias(name.clone(), format!("Vec<{}>", sanitize(&inner_name))));
-        // out.push(format!("pub type {} = Vec<{}>;", name, sanitize(&inner_name)));
-        return Some(name)
+            out.push(RustItem::TypeAlias(name.clone(), format!("Vec<{}>", sanitize(&inner_name))));
+
+            return Some(name)
+        } else {
+            todo!()
+        }
     } else if instance_types.len() > 1 {
         let variants = instance_types.iter()
             .map(|e| match e.as_ref() {
-                "number" => EnumVariant::Tuple(format!("Number"), format!("f64")),
-                "string" => EnumVariant::Tuple(format!("String"), format!("String")),
-                "boolean" => EnumVariant::Tuple(format!("Boolean"), format!("bool")),
-                "null" => EnumVariant::Unit(format!("Null"), format!("null")),
+                "number" => EnumVariant::Tuple(String::from("Number"), String::from("f64")),
+                "string" => EnumVariant::Tuple(String::from("String"), String::from("String")),
+                "boolean" => EnumVariant::Tuple(String::from("Boolean"), String::from("bool")),
+                "null" => EnumVariant::Unit(String::from("Null"), String::from("null")),
                 _ => unimplemented!(),
             })
             .collect::<Vec<_>>();
@@ -259,7 +261,7 @@ fn descend(in_name: String, schema: &Schema, out: &mut OutVec, root: bool) -> Op
         // out.push(format!("pub enum {} {{ {} }}", name, enums));
         return Some(name)
     } else {
-        error!("Unsupported {}: {:?}", name, schema);
+        warn!("Empty struct? {}", name);
         out.push(RustItem::DeriveCommon);
         out.push(RustItem::UnitStruct(name.clone()));
 
@@ -270,11 +272,11 @@ fn descend(in_name: String, schema: &Schema, out: &mut OutVec, root: bool) -> Op
 pub fn genimpl(schema: &Schema) -> TokenStream2 {
     let mut out : OutVec = vec![
         RustItem::DeriveCommon,
-        RustItem::UnitStruct("Null".into()),
+        RustItem::UnitStruct(String::from("Null")),
     ];
 
     for (name, defn) in schema.definitions.iter() {
-        descend(name.into(), &defn, &mut out, true);
+        descend(Cow::Borrowed(name.as_str()), &defn, &mut out, true);
     }
 
     quote! {

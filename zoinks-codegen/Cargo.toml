@@ -1,0 +1,17 @@
+[package]
+name = "zoinks-codegen"
+version = "0.1.0"
+authors = ["Alex Zepeda <zoinks@inferiorhumanorgans.com>"]
+edition = "2018"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+zoinks-lib = { path = "../zoinks-lib" }
+
+serde = { version = "1.0", features = [ "derive" ] }
+serde_json = "1.0"
+syn = { version = "1.0", features = ["extra-traits", "full"] }
+quote = "1.0"
+proc-macro2 = "1.0.2"

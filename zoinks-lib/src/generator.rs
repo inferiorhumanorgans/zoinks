@@ -71,12 +71,12 @@ fn descend(in_name: String, schema: &Schema, out: &mut OutVec, root: bool) -> Op
     // let strings_nulls : HashSet<String> = HashSet::from_iter(["string".into(), "null".into()]);
 
     if schema.any_of.len() > 0 && instance_types.is_empty() {
-        let mut outer = vec![];
+        let mut outer = Vec::with_capacity(4);
         outer.push(RustItem::DocComment(format!("any_of enum: {}", name)));
         outer.push(RustItem::DeriveCommon);
         outer.push(RustItem::SerdeUntagged);
 
-        let mut variants = vec![];
+        let mut variants = Vec::with_capacity(schema.any_of.len());
 
         for (i, any) in schema.any_of.iter().enumerate() {
             match descend(format!("{}Variant{}", name, i), any, out, false) {
@@ -141,16 +141,16 @@ fn descend(in_name: String, schema: &Schema, out: &mut OutVec, root: bool) -> Op
         return Some(name)
     } else if instance_types.len() == 1 && instance_types.contains("object") {
         if schema.properties.is_empty() {
-            error!("{} Empty object specified", name);
             out.push(RustItem::DeriveCommon);
             out.push(RustItem::TupleStruct(name.clone(), "serde_json::Value".into()));
 
             return Some(name)
         } else {
-            let mut outer = vec![];
+            let mut outer = Vec::with_capacity(4);
             outer.push(RustItem::DeriveCommon);
 
-            let mut fields = vec![];
+            let prop_count = schema.properties.len();
+            let mut fields = Vec::with_capacity(prop_count);
 
             for (prop_name, prop_schema) in schema.properties.iter() {
                 let prop_type = descend(format!("{}_prpty_{}", name, prop_name).to_camel_case(), &prop_schema, out, false).unwrap();

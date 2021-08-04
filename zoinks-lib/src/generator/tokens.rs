@@ -258,7 +258,7 @@ impl ToTokens for RustItem {
                             }
                         };
 
-                        let field_type : syn::Type = syn::parse_str(&field_type).expect("Unable to parse");
+                        let field_type : syn::Type = syn::parse_str(&field_type).expect(&format!("Unable to parse: {}", field_type));
 
                         let serde_default = match is_collection && !field.required {
                             true => quote!{ #[serde(default)] },

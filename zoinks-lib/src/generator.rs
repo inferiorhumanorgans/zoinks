@@ -153,7 +153,7 @@ fn descend(in_name: Cow<str>, schema: &Schema, out: &mut OutVec, root: bool) -> 
             let mut fields = Vec::with_capacity(prop_count);
 
             for (prop_name, prop_schema) in schema.properties.iter() {
-                let prop_type = descend(Cow::Owned(format!("{}_prpty_{}", name, prop_name).to_camel_case()), &prop_schema, out, false).unwrap();
+                let prop_type = descend(Cow::Owned(format!("{}_prpty_{}", name, prop_name).to_camel_case()), &prop_schema, out, false).expect(&format!("Failed to determine type for {}::{}", name,prop_name));
 
                 let field_name = sanitize(prop_name).to_snake_case();
 

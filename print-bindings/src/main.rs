@@ -1,7 +1,7 @@
 use clap::{crate_name, crate_version, App, Arg};
 use env_logger::{Builder, Env};
 
-use zoinks_lib::schema2print;
+use zoinks_lib::schemafile2print;
 // use zoinks_codegen::schema2struct;
 
 fn main() {
@@ -21,5 +21,5 @@ fn main() {
 
     let in_file = matches.value_of("input").unwrap();
 
-    println!("{}", schema2print(in_file));
+    println!("{}", schemafile2print(in_file));
 }

@@ -164,6 +164,19 @@ fn descend(in_name: String, schema: &Schema, out: &mut OutVec, root: bool) -> Op
                 });
             }
 
+            let fields = fields.into_iter()
+                .map(|field| {
+                    if schema.required.contains(&field.old_name) {
+                        StructField {
+                            required: true,
+                            ..field
+                        }
+                    } else {
+                        field
+                    }
+                })
+                .collect();
+
             let additional_fields = match schema.additional_properties.as_ref() {
                 None => true,
                 Some(additional_properties) => match additional_properties {

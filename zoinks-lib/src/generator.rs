@@ -42,7 +42,7 @@ fn is_boxed(type_name: &str, field_name: &str, prop_count: usize) -> bool {
 
 fn sanitize(before: &str) -> String {
     let out = before
-        .replace("[]", "Array")
+        .replace("[]", "_Array_")
         .replace("<", "_Qlt_")
         .replace(">", "_Qgt_")
         .replace("|", "_Qor_")

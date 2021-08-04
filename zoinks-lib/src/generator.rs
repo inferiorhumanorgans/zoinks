@@ -17,8 +17,14 @@ use tokens::*;
 
 type OutVec = Vec<RustItem>;
 
-// TODO: Make this more general
-fn is_boxed(type_name: &str, field_name: &str) -> bool {
+// TODO: Make this more generic
+fn is_boxed(type_name: &str, field_name: &str, prop_count: usize) -> bool {
+    // If we have a mega struct let's box the fields
+    if prop_count > 15 {
+        return true
+    }
+
+    //  Because of recursion
     if type_name == "DerivedStream" && field_name == "stream" {
         return true
     }
@@ -28,10 +34,6 @@ fn is_boxed(type_name: &str, field_name: &str) -> bool {
     }
 
     if type_name == "NonLayerRepeatSpec" && field_name == "spec" {
-        return true
-    }
-
-    if type_name == "TopLevelUnitSpec" && field_name == "config" {
         return true
     }
 

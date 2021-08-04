@@ -218,13 +218,27 @@ impl ToTokens for RustItem {
             },
             Self::TupleStruct(struct_name, struct_type) => {
                 let struct_name = Ident::new(&struct_name, Span::call_site());
+
                 let struct_type : syn::Type = syn::parse_str(struct_type).expect("Unable to parse");
+
+                let deref_impl = quote!{
+                    impl std::ops::Deref for #struct_name {
+                        type Target = #struct_type;
+
+                        fn deref(&self) -> &Self::Target {
+                            &self.0
+                        }
+                    }
+                };
 
                 let tuple_struct = quote! {
                     pub struct #struct_name (#struct_type);
+
+                    #deref_impl
                 };
 
                 out.extend(tuple_struct);
+
             }
             Self::UnitStruct(struct_name) => {
                 let struct_name = Ident::new(struct_name, Span::call_site());

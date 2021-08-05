@@ -212,7 +212,7 @@ fn descend(in_name: Cow<str>, schema: &Schema, out: &mut OutVec, root: bool) -> 
             return Some(reference)
         } else {
             error!("Unsupported reference: {}", reference);
-            return None
+            return Some(String::from("serde_json::Value"))
         }
     } else if instance_types.len() == 1 {
         if instance_types.contains("number") {
@@ -283,7 +283,8 @@ fn descend(in_name: Cow<str>, schema: &Schema, out: &mut OutVec, root: bool) -> 
     } else {
         warn!("Empty struct? {}", name);
         out.push(RustItem::DeriveCommon);
-        out.push(RustItem::UnitStruct(name.clone()));
+        // out.push(RustItem::UnitStruct(name.clone()));
+        out.push(RustItem::TupleStruct(name.clone(), String::from("serde_json::Value")));
 
         return Some(name)
     }
@@ -298,6 +299,8 @@ pub fn genimpl(schema: &Schema) -> TokenStream2 {
     for (name, defn) in schema.definitions.iter() {
         descend(Cow::Borrowed(name.as_str()), &defn, &mut out, true);
     }
+
+    descend(Cow::Borrowed("top_level"), schema, &mut out, true);
 
     quote! {
         #(#out)*
